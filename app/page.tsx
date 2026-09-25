@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { AuditAction, AuditEvent, NotificationItem, NurseAccount, Patient, Role, Shift, SupervisorAccount } from '@/lib/types'
+import type { AuditAction, AuditEvent, NotificationItem, NurseAccount, Patient, Role, Shift, StaffRole, SupervisorAccount } from '@/lib/types'
 import { newId } from '@/lib/storage'
-import { Landing, NurseAuth, SupervisorAuth, useIdleTimeout } from '@/components/Shared'
+import { Landing, NurseAuth, SupervisorAuth, useIdleTimeout, type LandingPick } from '@/components/Shared'
 import { NurseApp } from '@/components/Nurse'
 import { SupervisorApp } from '@/components/Supervisor'
 import { createClient } from '@/lib/supabase/client'
@@ -17,11 +17,24 @@ type Screen = 'landing' | 'nurseAuth' | 'supervisorAuth' | 'nurse' | 'supervisor
 // take `notifications` as its own top-level prop.
 type NurseWithNotifications = NurseAccount & { notifications: NotificationItem[] }
 
+const STAFF_ROLE_LABEL: Record<StaffRole, string> = {
+  nurse: 'Nurse',
+  pca_cna: 'PCA/CNA',
+}
+
 export default function Page() {
   const [screen, setScreen] = useState<Screen>('landing')
   const [sessionMessage, setSessionMessage] = useState('')
   const [checkingSession, setCheckingSession] = useState(true)
   const [authError, setAuthError] = useState('')
+
+  // Which of the two nurse-table entry points the person clicked on the
+  // landing screen — 'nurse' or 'pca_cna'. Nurse and PCA/CNA share the
+  // same table/RPCs/RLS, so this is the only piece of state that actually
+  // distinguishes the two flows on the client; the real enforcement (you
+  // must log in through the button matching your account's role) happens
+  // server-side in the auth-login Edge Function.
+  const [staffRoleContext, setStaffRoleContext] = useState<StaffRole>('nurse')
 
   const [currentNurse, setCurrentNurse] = useState<NurseWithNotifications | null>(null)
   const [currentSupervisor, setCurrentSupervisor] = useState<SupervisorAccount | null>(null)
@@ -120,7 +133,7 @@ export default function Page() {
       if (role === 'nurse') {
         const { data } = await supabase
           .from('nurses')
-          .select('id, name, phone, status, must_reset_pin, active')
+          .select('id, name, phone, status, role, must_reset_pin, active')
           .eq('auth_user_id', session.user.id)
           .single()
 
@@ -141,6 +154,7 @@ export default function Page() {
             name: data.name,
             phone: data.phone,
             status: data.status,
+            role: data.role,
             mustResetPin: data.must_reset_pin,
             assignedPatientIds: [],
             active: data.active,
@@ -175,11 +189,11 @@ export default function Page() {
     goLanding('Your session expired after 15 minutes of inactivity. Please sign in again.')
   })
 
-  /* ---------------------------- Nurse auth ---------------------------- */
+  /* ---------------------------- Nurse / PCA-CNA auth ------------------- */
 
   async function createNurse(name: string, phone: string, pin: string) {
     setAuthError('')
-    const result = await registerNurse(name, phone, pin)
+    const result = await registerNurse(name, phone, pin, staffRoleContext)
     if (!result.ok) {
       setAuthError(
         result.error === 'phone_taken'
@@ -190,13 +204,20 @@ export default function Page() {
     }
     setAuthError('')
     audit('account_created', [], name)
-    goLanding(`Thanks, ${name.split(' ')[0]}! Your account was created and is waiting on your supervisor's approval before you can sign in.`)
+    goLanding(
+      `Thanks, ${name.split(' ')[0]}! Your ${STAFF_ROLE_LABEL[staffRoleContext]} account was created and is waiting on your supervisor's approval before you can sign in.`
+    )
   }
 
   async function loginNurse(phone: string, pin: string) {
     setAuthError('')
-    const result = await login('nurse', phone, pin)
+    const result = await login('nurse', phone, pin, staffRoleContext)
     if (!result.ok) {
+      if (result.error === 'wrong_role') {
+        const actualLabel = result.actualRole ? STAFF_ROLE_LABEL[result.actualRole] : 'a different role'
+        setAuthError(`This account is registered as ${actualLabel}. Please use the ${actualLabel} login option instead.`)
+        return
+      }
       setAuthError(
         result.error === 'pending_approval'
           ? 'Your account is awaiting supervisor approval. Please check back soon or contact your supervisor.'
@@ -220,6 +241,7 @@ export default function Page() {
       name: result.profile.name,
       phone,
       status: 'approved',
+      role: result.profile.role ?? staffRoleContext,
       mustResetPin: !!result.profile.mustResetPin,
       assignedPatientIds: [],
       active: true,
@@ -278,9 +300,14 @@ export default function Page() {
   if (screen === 'landing') {
     return (
       <Landing
-        onPick={(role) => {
+        onPick={(pick: LandingPick) => {
           setAuthError('')
-          setScreen(role === 'nurse' ? 'nurseAuth' : 'supervisorAuth')
+          if (pick === 'supervisor') {
+            setScreen('supervisorAuth')
+          } else {
+            setStaffRoleContext(pick)
+            setScreen('nurseAuth')
+          }
         }}
         sessionMessage={sessionMessage}
         onDismissMessage={() => setSessionMessage('')}
@@ -289,7 +316,15 @@ export default function Page() {
   }
 
   if (screen === 'nurseAuth') {
-    return <NurseAuth onBack={() => setScreen('landing')} onCreate={createNurse} onLogin={loginNurse} error={authError} />
+    return (
+      <NurseAuth
+        staffRole={staffRoleContext}
+        onBack={() => setScreen('landing')}
+        onCreate={createNurse}
+        onLogin={loginNurse}
+        error={authError}
+      />
+    )
   }
 
   if (screen === 'supervisorAuth') {
@@ -355,7 +390,17 @@ export default function Page() {
     )
   }
 
-  return <Landing onPick={(role) => setScreen(role === 'nurse' ? 'nurseAuth' : 'supervisorAuth')} />
+  return (
+    <Landing
+      onPick={(pick) => {
+        if (pick === 'supervisor') setScreen('supervisorAuth')
+        else {
+          setStaffRoleContext(pick)
+          setScreen('nurseAuth')
+        }
+      }}
+    />
+  )
 }
 
 /* ---------------------------------------------------------------------- */

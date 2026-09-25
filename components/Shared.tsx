@@ -11,8 +11,9 @@ import {
   Stethoscope,
   UsersRound,
   History,
+  HeartHandshake,
 } from 'lucide-react'
-import type { Role } from '@/lib/types'
+import type { StaffRole } from '@/lib/types'
 
 /* ---------------------------------------------------------------------- */
 /* Idle / session timeout (HIPAA requirement: 15 min inactivity)          */
@@ -44,12 +45,14 @@ export function useIdleTimeout(active: boolean, onTimeout: () => void) {
 /* Landing / role picker                                                  */
 /* ---------------------------------------------------------------------- */
 
+export type LandingPick = StaffRole | 'supervisor'
+
 export function Landing({
   onPick,
   sessionMessage,
   onDismissMessage,
 }: {
-  onPick: (role: Role) => void
+  onPick: (pick: LandingPick) => void
   sessionMessage?: string
   onDismissMessage?: () => void
 }) {
@@ -73,6 +76,15 @@ export function Landing({
             </span>
             <span>
               <strong>Nurse</strong>
+              <small>Continue to your workspace</small>
+            </span>
+          </button>
+          <button onClick={() => onPick('pca_cna')}>
+            <span className="action-icon amber-bg">
+              <HeartHandshake />
+            </span>
+            <span>
+              <strong>PCA/CNA</strong>
               <small>Continue to your workspace</small>
             </span>
           </button>
@@ -195,29 +207,37 @@ export function SupervisorBottomNav({
 }
 
 /* ---------------------------------------------------------------------- */
-/* Nurse auth (create account / log in — no seeded accounts)              */
+/* Nurse / PCA-CNA auth (create account / log in — no seeded accounts)    */
 /* ---------------------------------------------------------------------- */
 
+const STAFF_ROLE_LABEL: Record<StaffRole, string> = {
+  nurse: 'Nurse',
+  pca_cna: 'PCA/CNA',
+}
+
 export function NurseAuth({
+  staffRole,
   onBack,
   onCreate,
   onLogin,
   error,
 }: {
+  // Which entry point this is — only changes copy/labels. The actual
+  // role-matching enforcement happens server-side (see auth-login), not
+  // here; this prop exists purely so the same component can serve both
+  // buttons without duplicating the whole screen.
+  staffRole: StaffRole
   onBack: () => void
   onCreate: (name: string, phone: string, pin: string) => Promise<void>
   onLogin: (phone: string, pin: string) => Promise<void>
   error: string
 }) {
+  const roleLabel = STAFF_ROLE_LABEL[staffRole]
   const [mode, setMode] = useState<'choose' | 'create' | 'login'>('choose')
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [pin, setPin] = useState('')
   const [showPendingInfo, setShowPendingInfo] = useState(false)
-  // One flag covers both flows below — they're never in flight at the
-  // same time (create goes through the confirm modal first, login fires
-  // straight from the main button), so there's no risk of one clobbering
-  // the other's spinner state.
   const [submitting, setSubmitting] = useState(false)
 
   async function handleLogin() {
@@ -249,7 +269,7 @@ export function NurseAuth({
           <div className="brand-mark login-mark">
             <Stethoscope />
           </div>
-          <h1>Nurse workspace</h1>
+          <h1>{roleLabel} workspace</h1>
           <p className="login-copy">Create an account the first time you sign in, or log in if you already have one.</p>
           <div className="login-options">
             <button onClick={() => setMode('create')}>
@@ -287,7 +307,9 @@ export function NurseAuth({
         <div className="brand-mark login-mark">
           <Stethoscope />
         </div>
-        <p className="eyebrow">{mode === 'create' ? 'Create account' : 'Log in'}</p>
+        <p className="eyebrow">
+          {roleLabel} · {mode === 'create' ? 'Create account' : 'Log in'}
+        </p>
         <h1>{mode === 'create' ? 'Create your account.' : 'Welcome back.'}</h1>
         <div className="form-stack">
           {mode === 'create' && (
@@ -300,7 +322,7 @@ export function NurseAuth({
             Phone number
             <input
               value={phone}
-              onChange={(event) => setPhone(event.target.value)}
+              onChange={(event) => setPhone(event.target.value.replace(/[^\d+]/g, '').replace(/(?!^)\+/g, ''))}
               placeholder="Phone number"
               inputMode="tel"
               disabled={submitting}
@@ -345,8 +367,8 @@ export function NurseAuth({
             </div>
             <div className="modal-body">
               <p className="lead">
-                Your account will be created, but it won&apos;t be usable right away. A supervisor needs to review and approve it
-                first — once they do, you can sign in with the phone number and PIN you just chose.
+                Your account will be created as a {roleLabel}, but it won&apos;t be usable right away. A supervisor needs to review
+                and approve it first — once they do, you can sign in with the phone number and PIN you just chose.
               </p>
               <div className="review-actions" style={{ marginTop: 22 }}>
                 <button className="secondary-button" onClick={() => setShowPendingInfo(false)}>

@@ -82,6 +82,7 @@ function dbNurseToNurseAccount(row: any): NurseAccount {
     name: row.name,
     phone: row.phone,
     status: row.status,
+    role: row.role,
     mustResetPin: row.must_reset_pin,
     assignedPatientIds: (row.nurse_patient_assignments ?? []).map((a: any) => a.patient_id),
     active: row.active,
@@ -119,7 +120,7 @@ export async function fetchNurses(): Promise<NurseAccount[]> {
   const supabase = createClient()
   const { data, error } = await supabase
     .from('nurses')
-    .select('id, name, phone, status, must_reset_pin, active, nurse_patient_assignments ( patient_id )')
+    .select('id, name, phone, status, role, must_reset_pin, active, nurse_patient_assignments ( patient_id )')
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data ?? []).map(dbNurseToNurseAccount)
@@ -195,14 +196,6 @@ export async function resetNursePin(nurseId: string, newPin: string) {
   if (error) throw error
 }
 
-// NOTE: shifts.nurse_id is ON DELETE RESTRICT — a nurse who has ever
-// worked a shift can't be deleted, so their care-documentation history
-// can't be silently wiped by removing their account. Catch that and
-// surface a friendly message rather than a raw Postgres error. There's
-// currently no "deactivate" flag as an alternative — a nurse with shift
-// history can only be blocked from logging in via a PIN reset they're
-// never given, not formally deactivated. Worth adding a proper
-// nurses.active column + UI toggle as a follow-up.
 // Plain UPDATE, permitted for supervisors by the existing
 // nurses_update_by_supervisor RLS policy — no new grant needed. Setting
 // active=false immediately blocks the nurse everywhere via
@@ -384,13 +377,8 @@ export async function submitShift(
 
 // Requires the schema fix that widens shifts_update_own_in_progress to
 // also permit status = 'rejected' in USING — without it, RLS silently
-// filters this update to zero affected rows instead of erroring, which is
-// exactly the "taps resubmit, sees no error, shift stays stuck" bug. The
-// .select() + length check below is a deliberate safeguard against that
-// class of bug in general: a Postgres RLS-filtered UPDATE never throws,
-// it just quietly updates nothing, so any update the app treats as
-// "must succeed" should verify affected rows rather than trust a null
-// error.
+// filters this update to zero affected rows instead of erroring. The
+// .select() + length check below guards against exactly that class of bug.
 export async function reopenShift(shiftId: string) {
   const supabase = createClient()
   const { data, error } = await supabase

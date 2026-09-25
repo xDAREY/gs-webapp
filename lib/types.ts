@@ -1,4 +1,5 @@
 export type Role = 'nurse' | 'supervisor'
+export type StaffRole = 'nurse' | 'pca_cna'
 
 export type NurseStatus = 'pending' | 'approved'
 export type ShiftStatus = 'in_progress' | 'submitted' | 'approved' | 'rejected'
@@ -23,6 +24,7 @@ export type NurseAccount = {
   name: string
   phone: string
   status: NurseStatus
+  role: StaffRole
   mustResetPin: boolean
   assignedPatientIds: string[]
   // Deactivated nurses can't log in and lose all RLS-gated access
