@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 import type { Entry, NotificationItem, NurseAccount, Patient, Shift } from '@/lib/types'
 import { initials, newId, nowTime } from '@/lib/storage'
-import { CARE_TAGS, ROUTES_OF_ADMINISTRATION, SEIZURE_OBSERVATIONS, TASK_GROUPS } from '@/lib/data'
+import { CARE_TAGS, ROUTES_OF_ADMINISTRATION, SEIZURE_OBSERVATIONS, TASK_GROUPS, TEMPERATURE_METHODS } from '@/lib/data'
 import { Header, NurseBottomNav } from './Shared'
 import {
   addEntry as dbAddEntry,
@@ -32,8 +32,14 @@ import {
   submitShift as dbSubmitShift,
 } from '@/lib/supabase/data'
 
+function formatEntryStamp(entry: Entry) {
+  const dateLabel = new Date(entry.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  const timeLabel = entry.timeframe || entry.time
+  return `${dateLabel} · ${timeLabel}`
+}
+
 type NurseTab = 'home' | 'patients' | 'history'
-type NurseModal = 'startShift' | 'note' | 'medication' | 'incident' | 'task' | 'end' | null
+type NurseModal = 'startShift' | 'note' | 'medication' | 'incident' | 'task' | 'vitals' | 'temperature' | 'end' | null
 type NurseWithNotifications = NurseAccount & { notifications: NotificationItem[] }
 
 export function NurseApp({
@@ -207,6 +213,12 @@ export function NurseApp({
       {modal === 'task' && activeShift && (
         <TaskModal onSave={(entry) => addEntry(entry)} onClose={() => setModal(null)} />
       )}
+      {modal === 'vitals' && activeShift && (
+        <VitalsModal onSave={(entry) => addEntry(entry)} onClose={() => setModal(null)} />
+      )}
+      {modal === 'temperature' && activeShift && (
+        <TemperatureModal onSave={(entry) => addEntry(entry)} onClose={() => setModal(null)} />
+      )}
       {modal === 'end' && activeShift && (
         <EndShiftModal shift={activeShift} nurse={nurse} onSubmit={submitShift} onClose={() => setModal(null)} />
       )}
@@ -243,7 +255,7 @@ function NurseHome({
   activeShift?: Shift
   hasAssignedPatients: boolean
   onStartShift: () => void
-  onAction: (type: 'note' | 'medication' | 'incident' | 'task' | 'end') => void
+    onAction: (type: 'note' | 'medication' | 'incident' | 'task' | 'vitals' | 'temperature' | 'end') => void
   onOpenNotifications: () => void
 }) {
   const [showNotifications, setShowNotifications] = useState(false)
@@ -376,6 +388,20 @@ function NurseHome({
             <strong>Task</strong>
             <small>Check off completed tasks</small>
           </button>
+                    <button disabled={!activeShift} onClick={() => onAction('vitals')}>
+            <span className="action-icon blue-bg">
+              <Pill />
+            </span>
+            <strong>Log vitals</strong>
+            <small>BP, pulse, resp, O2</small>
+          </button>
+          <button disabled={!activeShift} onClick={() => onAction('temperature')}>
+            <span className="action-icon amber-bg">
+              <FileText />
+            </span>
+            <strong>Log temperature</strong>
+            <small>Record a reading</small>
+          </button>
         </div>
       </section>
 
@@ -428,16 +454,25 @@ function NurseHome({
 }
 
 function TimelineItem({ entry }: { entry: Entry }) {
-  const icon =
-    entry.kind === 'incident' ? <AlertTriangle /> : entry.kind === 'medication' ? <Pill /> : entry.kind === 'task' ? <ClipboardList /> : <FileText />
-  const title =
-    entry.kind === 'medication'
-      ? `${entry.drug} · ${entry.medStatus}`
-      : entry.kind === 'incident'
-        ? 'Seizure incident'
-        : entry.kind === 'task'
-          ? 'Tasks completed'
-          : 'Hourly note'
+    const icon =
+      entry.kind === 'incident' ? <AlertTriangle />
+      : entry.kind === 'medication' ? <Pill />
+      : entry.kind === 'task' ? <ClipboardList />
+      : entry.kind === 'vitals' ? <Stethoscope />
+      : entry.kind === 'temperature' ? <FileText />
+      : <FileText />
+    const title =
+      entry.kind === 'medication'
+        ? `${entry.drug} · ${entry.medStatus}`
+        : entry.kind === 'incident'
+          ? 'Seizure incident'
+          : entry.kind === 'task'
+            ? 'Tasks completed'
+            : entry.kind === 'vitals'
+              ? 'Vitals recorded'
+              : entry.kind === 'temperature'
+                ? 'Temperature recorded'
+                : 'Hourly note'
   return (
     <div className="timeline-item">
       <div className="timeline-line">
@@ -445,8 +480,8 @@ function TimelineItem({ entry }: { entry: Entry }) {
       </div>
       <div className="timeline-content">
         <div className="timeline-meta">
-          <span>{entry.timeframe || entry.time}</span>
-          {entry.kind === 'incident' && <span className="status-badge red">Incident</span>}
+          <span>{formatEntryStamp(entry)}</span>
+          {entry.kind === 'incident' && <span className="status-badge critical-flash">⚠ SEIZURE</span>}
           {entry.status === 'Needs attention' && <span className="status-badge amber">Needs attention</span>}
         </div>
         <h4>
@@ -895,6 +930,118 @@ function TaskModal({ onSave, onClose }: { onSave: (entry: Entry) => void; onClos
         }
       >
         <Check /> Save tasks
+      </button>
+    </Modal>
+  )
+}
+
+function VitalsModal({ onSave, onClose }: { onSave: (entry: Entry) => void; onClose: () => void }) {
+  const [bp, setBp] = useState('')
+  const [pulse, setPulse] = useState('')
+  const [resp, setResp] = useState('')
+  const [o2, setO2] = useState('')
+  const [note, setNote] = useState('')
+  const canSave = bp.trim() || pulse.trim() || resp.trim() || o2.trim()
+
+  return (
+    <Modal title="Log vitals" onClose={onClose}>
+      <div className="form-stack">
+        <label>
+          Blood pressure
+          <input value={bp} onChange={(event) => setBp(event.target.value)} placeholder="e.g. 120/80" />
+        </label>
+        <div className="form-row">
+          <label>
+            Pulse (bpm)
+            <input value={pulse} onChange={(event) => setPulse(event.target.value)} />
+          </label>
+          <label>
+            Resp. rate
+            <input value={resp} onChange={(event) => setResp(event.target.value)} />
+          </label>
+        </div>
+        <label>
+          O2 saturation (%)
+          <input value={o2} onChange={(event) => setO2(event.target.value)} />
+        </label>
+        <label>
+          Notes
+          <textarea className="large-textarea" value={note} onChange={(event) => setNote(event.target.value)} />
+        </label>
+      </div>
+      <button
+        className="primary-button wide"
+        disabled={!canSave}
+        onClick={() =>
+          onSave({
+            id: newId(),
+            kind: 'vitals',
+            time: nowTime(),
+            timestamp: new Date().toISOString(),
+            bloodPressure: bp.trim(),
+            pulse: pulse.trim(),
+            respiratoryRate: resp.trim(),
+            oxygenSaturation: o2.trim(),
+            detail: note.trim() || `BP ${bp} · Pulse ${pulse} · Resp ${resp} · O2 ${o2}%`,
+          })
+        }
+      >
+        <Check /> Save vitals
+      </button>
+    </Modal>
+  )
+}
+
+function TemperatureModal({ onSave, onClose }: { onSave: (entry: Entry) => void; onClose: () => void }) {
+  const [value, setValue] = useState('')
+  const [unit, setUnit] = useState<'F' | 'C'>('F')
+  const [method, setMethod] = useState('')
+
+  return (
+    <Modal title="Log temperature" onClose={onClose}>
+      <div className="form-stack">
+        <div className="form-row">
+          <label>
+            Temperature
+            <input value={value} onChange={(event) => setValue(event.target.value)} placeholder="e.g. 98.6" />
+          </label>
+          <label>
+            Unit
+            <select value={unit} onChange={(event) => setUnit(event.target.value as 'F' | 'C')}>
+              <option value="F">°F</option>
+              <option value="C">°C</option>
+            </select>
+          </label>
+        </div>
+        <label>
+          Method
+          <select value={method} onChange={(event) => setMethod(event.target.value)}>
+            <option value="">Select method</option>
+            {TEMPERATURE_METHODS.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <button
+        className="primary-button wide"
+        disabled={!value.trim() || !method}
+        onClick={() =>
+          onSave({
+            id: newId(),
+            kind: 'temperature',
+            time: nowTime(),
+            timestamp: new Date().toISOString(),
+            temperatureValue: value.trim(),
+            temperatureUnit: unit,
+            temperatureMethod: method,
+            detail: `${value.trim()}°${unit} (${method})`,
+          })
+        }
+      >
+        <Check /> Save temperature
       </button>
     </Modal>
   )

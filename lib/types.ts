@@ -3,7 +3,7 @@ export type StaffRole = 'nurse' | 'pca_cna'
 
 export type NurseStatus = 'pending' | 'approved'
 export type ShiftStatus = 'in_progress' | 'submitted' | 'approved' | 'rejected'
-export type EntryKind = 'note' | 'medication' | 'incident' | 'task'
+export type EntryKind = 'note' | 'medication' | 'incident' | 'task'| 'vitals' | 'temperature'
 export type CareStatus = 'Stable' | 'Needs attention'
 export type MedicationStatus = 'Given' | 'Refused'
 export type NotificationType = 'approved' | 'rejected'
@@ -72,6 +72,13 @@ export type Entry = {
   lengthOfEvent?: string
   timeframe?: string
   tasks?: string[]
+  bloodPressure?: string
+  pulse?: string
+  respiratoryRate?: string
+  oxygenSaturation?: string
+  temperatureValue?: string
+  temperatureUnit?: 'F' | 'C'
+  temperatureMethod?: string
 }
 
 export type Shift = {

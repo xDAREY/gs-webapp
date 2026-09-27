@@ -37,6 +37,12 @@ import {
   updatePatient as updatePatientMutation,
 } from '@/lib/supabase/data'
 
+function formatEntryStamp(entry: Entry) {
+  const dateLabel = new Date(entry.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  const timeLabel = entry.timeframe || entry.time
+  return `${dateLabel} · ${timeLabel}`
+}
+
 type SupervisorTab = 'queue' | 'activity' | 'team' | 'patients'
 type QueueFilter = 'all' | 'incidents' | 'pending'
 
@@ -326,15 +332,15 @@ function ReviewQueue({
       {list.length ? (
         <div className="review-list">
           {list.map((shift) => (
-            <button key={shift.id} className={`review-card ${shift.incident ? 'urgent' : ''}`} onClick={() => onOpen(shift.id)}>
+              <button key={shift.id} className={`review-card ${shift.incident ? 'critical-flash' : ''}`} onClick={() => onOpen(shift.id)}>
               <div className="review-card-top">
                 <div className="avatar small">{initials(shift.nurseName)}</div>
                 <div>
                   <strong>{shift.nurseName}</strong>
                   <p>{shift.patientIds.map((id) => patients.find((p) => p.id === id)?.name).filter(Boolean).join(', ')}</p>
                 </div>
-                {shift.incident ? (
-                  <span className="status-badge red">Incident</span>
+                  {shift.incident ? (
+                  <span className="status-badge critical-flash">⚠ SEIZURE</span>
                 ) : (
                   <span className={`status-badge ${shift.status === 'approved' ? 'green' : 'amber'}`}>
                     {shift.status === 'submitted' ? 'Pending' : shift.status}
@@ -525,7 +531,7 @@ function DetailEntry({ entry }: { entry: Entry }) {
       </div>
       <div className="timeline-content">
         <div className="timeline-meta">
-          <span>{entry.timeframe || entry.time}</span>
+          <span>{formatEntryStamp(entry)}</span>
           {entry.status === 'Needs attention' && <span className="status-badge amber">Needs attention</span>}
         </div>
         <h4>
@@ -615,10 +621,13 @@ function TeamPanel({
   const assigningNurse = nurses.find((n) => n.id === assigningId) || null
   const removingNurse = nurses.find((n) => n.id === removingId) || null
 
-  const pendingNurses = nurses.filter((n) => n.status === 'pending')
-  const activeNurses = nurses.filter((n) => n.status !== 'pending' && n.active)
-  const inactiveNurses = nurses.filter((n) => n.status !== 'pending' && !n.active)
+  const pendingNurses = nurses.filter((n) => n.status === 'pending' && n.role === 'nurse')
+  const activeNurses = nurses.filter((n) => n.status !== 'pending' && n.active && n.role === 'nurse')
+  const inactiveNurses = nurses.filter((n) => n.status !== 'pending' && !n.active && n.role === 'nurse')
 
+  const pendingPCAs = nurses.filter((n) => n.status === 'pending' && n.role === 'pca_cna')
+  const activePCAs = nurses.filter((n) => n.status !== 'pending' && n.active && n.role === 'pca_cna')
+  const inactivePCAs = nurses.filter((n) => n.status !== 'pending' && !n.active && n.role === 'pca_cna')
   async function handleReset(nurse: NurseAccount) {
     setResettingId(nurse.id)
     try {
@@ -629,98 +638,200 @@ function TeamPanel({
     }
   }
 
-  return (
+    return (
     <>
-      <p className="lead">Nurses appear here automatically once they create their own account — nothing to set up in advance.</p>
+      <p className="lead">Nurses and PCA/CNAs appear here automatically once they create their own account — nothing to set up in advance.</p>
 
-      {!!pendingNurses.length && (
-        <section className="section-block" style={{ marginTop: 20 }}>
-          <div className="section-heading">
-            <h3>Awaiting approval</h3>
-            <span className="muted">{pendingNurses.length} pending</span>
-          </div>
-          <div className="review-list">
-            {pendingNurses.map((nurse) => (
+      <section className="section-block" style={{ marginTop: 20 }}>
+        <div className="section-heading">
+          <h3>Nurses</h3>
+        </div>
+
+        {!!pendingNurses.length && (
+          <>
+            <div className="section-heading" style={{ marginTop: 14 }}>
+              <h3 style={{ fontSize: 13 }}>Awaiting approval</h3>
+              <span className="muted">{pendingNurses.length} pending</span>
+            </div>
+            <div className="review-list">
+              {pendingNurses.map((nurse) => (
+                <div className="team-card" key={nurse.id}>
+                  <div className="avatar small">{initials(nurse.name)}</div>
+                  <div>
+                    <strong>{nurse.name}</strong>
+                    <p>{nurse.phone} · Can&apos;t sign in until approved</p>
+                  </div>
+                  <button className="primary-button" onClick={() => onApprove(nurse.id)}>
+                    <Check /> Approve
+                  </button>
+                  <button className="danger-outline" onClick={() => setRemovingId(nurse.id)}>
+                    Decline
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        <div className="review-list" style={{ marginTop: 16 }}>
+          {activeNurses.map((nurse) => {
+            const assignedCount = (nurse.assignedPatientIds || []).length
+            return (
               <div className="team-card" key={nurse.id}>
                 <div className="avatar small">{initials(nurse.name)}</div>
                 <div>
                   <strong>{nurse.name}</strong>
-                  <p>{nurse.phone} · Can&apos;t sign in until approved</p>
+                  <p>
+                    {nurse.phone}
+                    {nurse.mustResetPin ? ' · Temporary PIN active' : ''} · {assignedCount} patient{assignedCount === 1 ? '' : 's'} assigned
+                  </p>
                 </div>
-                <button className="primary-button" onClick={() => onApprove(nurse.id)}>
-                  <Check /> Approve
+                <button className="secondary-button" onClick={() => setAssigningId(nurse.id)}>
+                  Assign patients
                 </button>
-                <button className="danger-outline" onClick={() => setRemovingId(nurse.id)}>
-                  Decline
+                <button className="secondary-button" disabled={resettingId === nurse.id} onClick={() => handleReset(nurse)}>
+                  {resettingId === nurse.id ? 'Resetting…' : 'Reset PIN'}
                 </button>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <div className="review-list" style={{ marginTop: 16 }}>
-        {activeNurses.map((nurse) => {
-          const assignedCount = (nurse.assignedPatientIds || []).length
-          return (
-            <div className="team-card" key={nurse.id}>
-              <div className="avatar small">{initials(nurse.name)}</div>
-              <div>
-                <strong>{nurse.name}</strong>
-                <p>
-                  {nurse.phone}
-                  {nurse.mustResetPin ? ' · Temporary PIN active' : ''} · {assignedCount} patient{assignedCount === 1 ? '' : 's'} assigned
-                </p>
-              </div>
-              <button className="secondary-button" onClick={() => setAssigningId(nurse.id)}>
-                Assign patients
-              </button>
-              <button className="secondary-button" disabled={resettingId === nurse.id} onClick={() => handleReset(nurse)}>
-                {resettingId === nurse.id ? 'Resetting…' : 'Reset PIN'}
-              </button>
-              <button className="danger-outline" onClick={() => onToggleActive(nurse.id, false)}>
-                Deactivate
-              </button>
-              <button className="danger-outline" onClick={() => setRemovingId(nurse.id)}>
-                Remove
-              </button>
-            </div>
-          )
-        })}
-        {!nurses.length && (
-          <div className="empty-state">
-            <Stethoscope />
-            <strong>No nurses yet</strong>
-            <p>Nurse accounts will appear here once created.</p>
-          </div>
-        )}
-      </div>
-
-      {!!inactiveNurses.length && (
-        <section className="section-block" style={{ marginTop: 20 }}>
-          <div className="section-heading">
-            <h3>Deactivated</h3>
-            <span className="muted">{inactiveNurses.length} deactivated</span>
-          </div>
-          <div className="review-list">
-            {inactiveNurses.map((nurse) => (
-              <div className="team-card" key={nurse.id} style={{ opacity: 0.7 }}>
-                <div className="avatar small">{initials(nurse.name)}</div>
-                <div>
-                  <strong>{nurse.name}</strong>
-                  <p>{nurse.phone} · Can&apos;t sign in while deactivated</p>
-                </div>
-                <button className="primary-button" onClick={() => onToggleActive(nurse.id, true)}>
-                  Reactivate
+                <button className="danger-outline" onClick={() => onToggleActive(nurse.id, false)}>
+                  Deactivate
                 </button>
                 <button className="danger-outline" onClick={() => setRemovingId(nurse.id)}>
                   Remove
                 </button>
               </div>
-            ))}
-          </div>
-        </section>
-      )}
+            )
+          })}
+          {!activeNurses.length && !pendingNurses.length && (
+            <div className="empty-state">
+              <Stethoscope />
+              <strong>No nurses yet</strong>
+              <p>Nurse accounts will appear here once created.</p>
+            </div>
+          )}
+        </div>
+
+        {!!inactiveNurses.length && (
+          <>
+            <div className="section-heading" style={{ marginTop: 20 }}>
+              <h3 style={{ fontSize: 13 }}>Deactivated</h3>
+              <span className="muted">{inactiveNurses.length} deactivated</span>
+            </div>
+            <div className="review-list">
+              {inactiveNurses.map((nurse) => (
+                <div className="team-card" key={nurse.id} style={{ opacity: 0.7 }}>
+                  <div className="avatar small">{initials(nurse.name)}</div>
+                  <div>
+                    <strong>{nurse.name}</strong>
+                    <p>{nurse.phone} · Can&apos;t sign in while deactivated</p>
+                  </div>
+                  <button className="primary-button" onClick={() => onToggleActive(nurse.id, true)}>
+                    Reactivate
+                  </button>
+                  <button className="danger-outline" onClick={() => setRemovingId(nurse.id)}>
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="section-block" style={{ marginTop: 34 }}>
+        <div className="section-heading">
+          <h3>PCA / CNA</h3>
+        </div>
+
+        {!!pendingPCAs.length && (
+          <>
+            <div className="section-heading" style={{ marginTop: 14 }}>
+              <h3 style={{ fontSize: 13 }}>Awaiting approval</h3>
+              <span className="muted">{pendingPCAs.length} pending</span>
+            </div>
+            <div className="review-list">
+              {pendingPCAs.map((nurse) => (
+                <div className="team-card" key={nurse.id}>
+                  <div className="avatar small">{initials(nurse.name)}</div>
+                  <div>
+                    <strong>{nurse.name}</strong>
+                    <p>{nurse.phone} · Can&apos;t sign in until approved</p>
+                  </div>
+                  <button className="primary-button" onClick={() => onApprove(nurse.id)}>
+                    <Check /> Approve
+                  </button>
+                  <button className="danger-outline" onClick={() => setRemovingId(nurse.id)}>
+                    Decline
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        <div className="review-list" style={{ marginTop: 16 }}>
+          {activePCAs.map((nurse) => {
+            const assignedCount = (nurse.assignedPatientIds || []).length
+            return (
+              <div className="team-card" key={nurse.id}>
+                <div className="avatar small">{initials(nurse.name)}</div>
+                <div>
+                  <strong>{nurse.name}</strong>
+                  <p>
+                    {nurse.phone}
+                    {nurse.mustResetPin ? ' · Temporary PIN active' : ''} · {assignedCount} patient{assignedCount === 1 ? '' : 's'} assigned
+                  </p>
+                </div>
+                <button className="secondary-button" onClick={() => setAssigningId(nurse.id)}>
+                  Assign patients
+                </button>
+                <button className="secondary-button" disabled={resettingId === nurse.id} onClick={() => handleReset(nurse)}>
+                  {resettingId === nurse.id ? 'Resetting…' : 'Reset PIN'}
+                </button>
+                <button className="danger-outline" onClick={() => onToggleActive(nurse.id, false)}>
+                  Deactivate
+                </button>
+                <button className="danger-outline" onClick={() => setRemovingId(nurse.id)}>
+                  Remove
+                </button>
+              </div>
+            )
+          })}
+          {!activePCAs.length && !pendingPCAs.length && (
+            <div className="empty-state">
+              <Stethoscope />
+              <strong>No PCA/CNAs yet</strong>
+              <p>PCA/CNA accounts will appear here once created.</p>
+            </div>
+          )}
+        </div>
+
+        {!!inactivePCAs.length && (
+          <>
+            <div className="section-heading" style={{ marginTop: 20 }}>
+              <h3 style={{ fontSize: 13 }}>Deactivated</h3>
+              <span className="muted">{inactivePCAs.length} deactivated</span>
+            </div>
+            <div className="review-list">
+              {inactivePCAs.map((nurse) => (
+                <div className="team-card" key={nurse.id} style={{ opacity: 0.7 }}>
+                  <div className="avatar small">{initials(nurse.name)}</div>
+                  <div>
+                    <strong>{nurse.name}</strong>
+                    <p>{nurse.phone} · Can&apos;t sign in while deactivated</p>
+                  </div>
+                  <button className="primary-button" onClick={() => onToggleActive(nurse.id, true)}>
+                    Reactivate
+                  </button>
+                  <button className="danger-outline" onClick={() => setRemovingId(nurse.id)}>
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+
       {message && (
         <div className="alert-callout" style={{ marginTop: 16 }}>
           <ShieldCheck />

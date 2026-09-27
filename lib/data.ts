@@ -33,6 +33,7 @@ export const ROUTES_OF_ADMINISTRATION = [
   'Ophthalmic',
   'Otic',
   'Nasal',
+  'Enteral (G-tube/feeding tube)',
   'Other',
 ]
 
@@ -67,3 +68,7 @@ export const TASK_GROUPS: { label: string; tasks: string[] }[] = [
     ],
   },
 ]
+
+export const TEMPERATURE_METHODS = ['Oral', 'Tympanic', 'Axillary', 'Temporal', 'Rectal']
+
+export const CRITICAL_OBSERVATIONS = ['SEIZURE'] // used for highlight logic

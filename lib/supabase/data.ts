@@ -35,6 +35,14 @@ function dbEntryToEntry(row: any): Entry {
     lengthOfEvent: row.length_of_event ?? undefined,
     timeframe: row.timeframe ?? undefined,
     tasks: row.tasks ?? [],
+    bloodPressure: row.blood_pressure ?? undefined,
+    pulse: row.pulse ?? undefined,
+    respiratoryRate: row.respiratory_rate ?? undefined,
+    oxygenSaturation: row.oxygen_saturation ?? undefined,
+    temperatureValue: row.temperature_value ?? undefined,
+    temperatureUnit: row.temperature_unit ?? undefined,
+    temperatureMethod: row.temperature_method ?? undefined,
+
   }
 }
 
@@ -346,6 +354,13 @@ export async function addEntry(shiftId: string, entry: EntryInput) {
     length_of_event: entry.lengthOfEvent ?? null,
     observations: entry.observations ?? [],
     tasks: entry.tasks ?? [],
+    blood_pressure: entry.bloodPressure ?? null,
+    pulse: entry.pulse ?? null,
+    respiratory_rate: entry.respiratoryRate ?? null,
+    oxygen_saturation: entry.oxygenSaturation ?? null,
+    temperature_value: entry.temperatureValue ?? null,
+    temperature_unit: entry.temperatureUnit ?? null,
+    temperature_method: entry.temperatureMethod ?? null,
   })
   if (error) throw error
 }
