@@ -23,6 +23,8 @@ import type { Entry, NotificationItem, NurseAccount, Patient, Shift } from '@/li
 import { initials, newId, nowTime } from '@/lib/storage'
 import { CARE_TAGS, ROUTES_OF_ADMINISTRATION, SEIZURE_OBSERVATIONS, TASK_GROUPS, TEMPERATURE_METHODS } from '@/lib/data'
 import { Header, NurseBottomNav } from './Shared'
+import { Activity, Thermometer } from 'lucide-react'
+
 import {
   addEntry as dbAddEntry,
   fetchShifts,
@@ -458,21 +460,16 @@ function TimelineItem({ entry }: { entry: Entry }) {
       entry.kind === 'incident' ? <AlertTriangle />
       : entry.kind === 'medication' ? <Pill />
       : entry.kind === 'task' ? <ClipboardList />
-      : entry.kind === 'vitals' ? <Stethoscope />
-      : entry.kind === 'temperature' ? <FileText />
+      : entry.kind === 'vitals' ? <Activity />
+      : entry.kind === 'temperature' ? <Thermometer />
       : <FileText />
-    const title =
-      entry.kind === 'medication'
-        ? `${entry.drug} · ${entry.medStatus}`
-        : entry.kind === 'incident'
-          ? 'Seizure incident'
-          : entry.kind === 'task'
-            ? 'Tasks completed'
-            : entry.kind === 'vitals'
-              ? 'Vitals recorded'
-              : entry.kind === 'temperature'
-                ? 'Temperature recorded'
-                : 'Hourly note'
+      const title =
+        entry.kind === 'medication' ? `${entry.drug} · ${entry.medStatus}` :
+        entry.kind === 'incident' ? 'Seizure incident' :
+        entry.kind === 'task' ? 'Tasks completed' :
+        entry.kind === 'vitals' ? 'Vitals recorded' :
+        entry.kind === 'temperature' ? 'Temperature recorded' :
+        'Hourly note'
   return (
     <div className="timeline-item">
       <div className="timeline-line">

@@ -20,6 +20,7 @@ import {
 import type { AuditAction, AuditEvent, Entry, NurseAccount, Patient, Shift } from '@/lib/types'
 import { generateTempPin, initials } from '@/lib/storage'
 import { Header, SupervisorBottomNav } from './Shared'
+import { Activity, Thermometer } from 'lucide-react'
 import { ConfirmModal } from './Nurse'
 import {
   addPatient as addPatientMutation,
@@ -394,6 +395,12 @@ function ShiftDetail({
 
       <section className="id-block">
         <div>
+          <span className="metric-label">Shift date</span>
+          <strong>
+            {new Date(shift.startedAt).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+          </strong>
+        </div>
+        <div>
           <span className="metric-label">Nurse</span>
           <strong>{shift.nurseName}</strong>
         </div>
@@ -514,16 +521,22 @@ function ShiftDetail({
 }
 
 function DetailEntry({ entry }: { entry: Entry }) {
-  const icon =
-    entry.kind === 'incident' ? <AlertTriangle /> : entry.kind === 'medication' ? <Pill /> : entry.kind === 'task' ? <ClipboardList /> : <FileText />
+ const icon =
+  entry.kind === 'incident' ? <AlertTriangle /> :
+  entry.kind === 'medication' ? <Pill /> :
+  entry.kind === 'task' ? <ClipboardList /> :
+  entry.kind === 'vitals' ? <Activity /> :
+  entry.kind === 'temperature' ? <Thermometer /> :
+  <FileText />
+
   const title =
-    entry.kind === 'medication'
-      ? `${entry.drug} · ${entry.medStatus}`
-      : entry.kind === 'incident'
-        ? 'Seizure incident'
-        : entry.kind === 'task'
-          ? 'Tasks completed'
-          : 'Hourly note'
+    entry.kind === 'medication' ? `${entry.drug} · ${entry.medStatus}` :
+    entry.kind === 'incident' ? 'Seizure incident' :
+    entry.kind === 'task' ? 'Tasks completed' :
+    entry.kind === 'vitals' ? 'Vitals recorded' :
+    entry.kind === 'temperature' ? 'Temperature recorded' :
+    'Hourly note'
+
   return (
     <div className="timeline-item">
       <div className="timeline-line">
