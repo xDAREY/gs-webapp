@@ -68,6 +68,7 @@ export function NurseApp({
   const [modal, setModal] = useState<NurseModal>(null)
   const [selectedPatientIds, setSelectedPatientIds] = useState<string[]>([])
   const [confirmingLogout, setConfirmingLogout] = useState(false)
+  const [confirmEditId, setConfirmEditId] = useState<string | null>(null)
   const [error, setError] = useState('')
 
   const nurseShifts = shifts.filter((shift) => shift.nurseId === nurse.id)
@@ -166,7 +167,7 @@ export function NurseApp({
 
   return (
     <div className="page-shell">
-      <Header title={tab === 'home' ? 'Good morning' : tab === 'patients' ? 'Patients' : 'History'} />
+      <Header title={tab === 'home' ? `Welcome, ${nurse.name}` : tab === 'patients' ? 'Patients' : 'History'} />
       <main className="content-area">
         {error && (
           <div className="alert-callout" style={{ marginBottom: 20 }}>
@@ -189,7 +190,13 @@ export function NurseApp({
         )}
         {tab === 'patients' && <PatientDirectory patients={assignedPatients} />}
         {tab === 'history' && (
-          <NurseHistory shifts={nurseShifts} patients={patients} hasActiveShift={!!activeShift} onReopen={reopenShift} />
+          <NurseHistory
+            shifts={nurseShifts}
+            patients={patients}
+            hasActiveShift={!!activeShift}
+            onReopen={reopenShift}
+            onEditSubmitted={(id) => setConfirmEditId(id)}
+          />
         )}
       </main>
       <NurseBottomNav tab={tab} onNavigate={setTab} onLogout={() => setConfirmingLogout(true)} />
@@ -223,6 +230,20 @@ export function NurseApp({
       )}
       {modal === 'end' && activeShift && (
         <EndShiftModal shift={activeShift} nurse={nurse} onSubmit={submitShift} onClose={() => setModal(null)} />
+      )}
+
+      {confirmEditId && (
+        <ConfirmModal
+          title="Edit this shift?"
+          body="This pulls the shift back from your supervisor's review queue. You can add entries and update your notes, but you'll need to sign and submit it again."
+          confirmLabel="Edit shift"
+          onCancel={() => setConfirmEditId(null)}
+          onConfirm={() => {
+            const id = confirmEditId
+            setConfirmEditId(null)
+            reopenShift(id)
+          }}
+        />
       )}
 
       {confirmingLogout && (
@@ -1061,6 +1082,7 @@ function EndShiftModal({
   const [followUp, setFollowUp] = useState(!!shift.followUp)
   const [confirmed, setConfirmed] = useState(false)
   const [signature, setSignature] = useState('')
+  const isResubmit = !!shift.reviewComment || !!shift.summary
 
   const checklist = [
     { label: 'At least one entry recorded', met: shift.entries.length > 0 },
@@ -1070,7 +1092,7 @@ function EndShiftModal({
   const allMet = checklist.every((item) => item.met) && confirmed && signature.trim().toLowerCase() === nurse.name.toLowerCase()
 
   return (
-    <Modal title={shift.reviewComment ? 'Fix & resubmit shift' : 'End shift'} onClose={onClose}>
+      <Modal title={shift.reviewComment ? 'Fix & resubmit shift' : isResubmit ? 'Edit & resubmit shift' : 'End shift'} onClose={onClose}>
       {shift.reviewComment && (
         <div className="alert-callout">
           <AlertTriangle />
@@ -1128,7 +1150,7 @@ function EndShiftModal({
         disabled={!allMet}
         onClick={() => onSubmit({ summary: summary.trim(), observations: observations.trim(), recommendations: recommendations.trim(), followUp, signature: signature.trim() })}
       >
-        {shift.reviewComment ? 'Resubmit shift' : 'Sign & submit shift'}
+      {shift.reviewComment ? 'Resubmit shift' : isResubmit ? 'Resubmit shift' : 'Sign & submit shift'}
       </button>
     </Modal>
   )
@@ -1141,11 +1163,13 @@ function NurseHistory({
   patients,
   hasActiveShift,
   onReopen,
+  onEditSubmitted,
 }: {
   shifts: Shift[]
   patients: Patient[]
   hasActiveShift: boolean
   onReopen: (shiftId: string) => void
+  onEditSubmitted: (shiftId: string) => void
 }) {
   const sorted = [...shifts].sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
   if (!sorted.length) {
@@ -1184,6 +1208,16 @@ function NurseHistory({
               onClick={() => onReopen(shift.id)}
             >
               {hasActiveShift ? 'Finish your current shift first' : 'Fix & resubmit'}
+            </button>
+          )}
+          {shift.status === 'submitted' && (
+            <button
+              className="secondary-button"
+              style={{ width: '100%', marginTop: 4 }}
+              disabled={hasActiveShift}
+              onClick={() => onEditSubmitted(shift.id)}
+            >
+              {hasActiveShift ? 'Finish your current shift first' : 'Edit shift'}
             </button>
           )}
         </div>

@@ -390,20 +390,21 @@ export async function submitShift(
   if (error) throw error
 }
 
-// Requires the schema fix that widens shifts_update_own_in_progress to
-// also permit status = 'rejected' in USING — without it, RLS silently
-// filters this update to zero affected rows instead of erroring. The
-// .select() + length check below guards against exactly that class of bug.
+// Requires shifts_update_own_in_progress to permit status IN
+// ('in_progress', 'submitted', 'rejected') in USING. Without it, RLS
+// silently filters this update to zero affected rows instead of erroring.
+// The .select() + length check below guards against exactly that.
 export async function reopenShift(shiftId: string) {
   const supabase = createClient()
   const { data, error } = await supabase
     .from('shifts')
-    .update({ status: 'in_progress', submitted_at: null })
+    .update({ status: 'in_progress', submitted_at: null, ended_at: null })
     .eq('id', shiftId)
+    .in('status', ['submitted', 'rejected'])
     .select('id')
   if (error) throw error
   if (!data || data.length === 0) {
-    throw new Error('Could not reopen this shift — it may no longer be available.')
+    throw new Error('This shift can no longer be edited. It may have just been approved.')
   }
 }
 
@@ -416,11 +417,16 @@ export async function reviewShift(
   notificationMessage: string
 ) {
   const supabase = createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('shifts')
     .update({ status, review_comment: comment || null, reviewed_at: new Date().toISOString(), reviewed_by: supervisorId })
     .eq('id', shiftId)
+    .eq('status', 'submitted')
+    .select('id')
   if (error) throw error
+  if (!data || data.length === 0) {
+    throw new Error('This shift is no longer awaiting review. The nurse may have reopened it.')
+  }
 
   const { error: notifyErr } = await supabase.from('notifications').insert({
     nurse_id: nurseId,
