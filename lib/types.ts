@@ -89,6 +89,7 @@ export type Shift = {
   status: ShiftStatus
   startedAt: string
   endedAt?: string
+  workedMinutes?: number
   submittedAt?: string
   entries: Entry[]
   incident: boolean

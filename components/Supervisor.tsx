@@ -22,6 +22,7 @@ import { generateTempPin, initials } from '@/lib/storage'
 import { Header, SupervisorBottomNav } from './Shared'
 import { Activity, Thermometer } from 'lucide-react'
 import { ConfirmModal } from './Nurse'
+import { HoursPanel } from './Hours'
 import {
   addPatient as addPatientMutation,
   approveNurse as approveNurseMutation,
@@ -44,7 +45,7 @@ function formatEntryStamp(entry: Entry) {
   return `${dateLabel} · ${timeLabel}`
 }
 
-type SupervisorTab = 'queue' | 'activity' | 'team' | 'patients'
+type SupervisorTab = 'queue' | 'hours' | 'activity' | 'team' | 'patients'
 type QueueFilter = 'all' | 'incidents' | 'pending'
 
 export function SupervisorApp({
@@ -221,7 +222,7 @@ export function SupervisorApp({
   return (
     <div className="page-shell">
       <Header
-        title={selectedShift ? 'Shift review' : tab === 'queue' ? 'Review queue' : tab === 'activity' ? 'Activity log' : tab === 'team' ? 'Nurses' : 'Patients'}
+        title={selectedShift ? 'Shift review' : tab === 'queue' ? 'Review queue' : tab === 'hours' ? 'Staff hours' : tab === 'activity' ? 'Activity log' : tab === 'team' ? 'Nurses' : 'Patients'}
         eyebrow="Supervisor portal"
         onBack={selectedShift ? () => setSelectedShiftId(null) : undefined}
       />
@@ -238,6 +239,8 @@ export function SupervisorApp({
           <ShiftDetail shift={selectedShift} patients={patients} onReview={review} />
         ) : tab === 'queue' ? (
           <ReviewQueue shifts={submittedShifts} patients={patients} filter={filter} setFilter={setFilter} onOpen={setSelectedShiftId} />
+        ) : tab === 'hours' ? (
+          <HoursPanel shifts={shifts} nurses={nurses} patients={patients} />
         ) : tab === 'activity' ? (
           <ActivityLog events={auditEvents} patients={patients} />
         ) : tab === 'team' ? (

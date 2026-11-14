@@ -132,7 +132,7 @@ export function NurseApp({
     }
   }
 
-  async function submitShift(payload: { summary: string; observations: string; recommendations: string; followUp: boolean; signature: string }) {
+  async function submitShift(payload: { summary: string; observations: string; recommendations: string; followUp: boolean; signature: string; workedMinutes: number }) {
     if (!activeShift) return
     try {
       await dbSubmitShift(activeShift.id, payload)
@@ -1065,6 +1065,8 @@ function TemperatureModal({ onSave, onClose }: { onSave: (entry: Entry) => void;
   )
 }
 
+const MAX_WORKED_MINUTES = 8 * 60 // 8-hour cap per shift
+
 function EndShiftModal({
   shift,
   nurse,
@@ -1073,7 +1075,7 @@ function EndShiftModal({
 }: {
   shift: Shift
   nurse: NurseAccount
-  onSubmit: (payload: { summary: string; observations: string; recommendations: string; followUp: boolean; signature: string }) => void
+  onSubmit: (payload: { summary: string; observations: string; recommendations: string; followUp: boolean; signature: string; workedMinutes: number }) => void
   onClose: () => void
 }) {
   const [summary, setSummary] = useState(shift.summary || '')
@@ -1082,11 +1084,28 @@ function EndShiftModal({
   const [followUp, setFollowUp] = useState(!!shift.followUp)
   const [confirmed, setConfirmed] = useState(false)
   const [signature, setSignature] = useState('')
+  const previous = (shift as Shift & { workedMinutes?: number | null }).workedMinutes ?? null
+  const [hours, setHours] = useState(previous != null ? String(Math.floor(previous / 60)) : '')
+  const [minutes, setMinutes] = useState(previous != null ? String(previous % 60) : '')
   const isResubmit = !!shift.reviewComment || !!shift.summary
+
+  const workedTotal = hours !== '' && minutes !== '' ? Number(hours) * 60 + Number(minutes) : null
+  const hoursValid = workedTotal !== null && workedTotal >= 1 && workedTotal <= MAX_WORKED_MINUTES
+  const startedMs = new Date(shift.startedAt).getTime()
+  const elapsedMin = Math.max(0, Math.floor((Date.now() - startedMs) / 60000))
+  const claimsMoreThanElapsed = hoursValid && workedTotal! > elapsedMin + 15
+  const endsAt = hoursValid ? new Date(startedMs + workedTotal! * 60000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''
+  const startedLabel = new Date(shift.startedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+
+  function changeHours(value: string) {
+    setHours(value)
+    if (value === '8' && minutes !== '' && minutes !== '0') setMinutes('0') // 8h is the maximum
+  }
 
   const checklist = [
     { label: 'At least one entry recorded', met: shift.entries.length > 0 },
     { label: 'Summary of care completed', met: summary.trim().length > 0 },
+    { label: 'Hours worked entered', met: hoursValid },
     { label: 'Follow-up status identified', met: true },
   ]
   const allMet = checklist.every((item) => item.met) && confirmed && signature.trim().toLowerCase() === nurse.name.toLowerCase()
@@ -1124,6 +1143,49 @@ function EndShiftModal({
         </button>
       </div>
 
+      <label className="field-label" style={{ marginTop: 20 }}>Hours worked this shift</label>
+      <p className="helper-text" style={{ textAlign: 'left', marginTop: 0 }}>
+        Your shift started at {startedLabel}. Enter how long you worked (8 hours maximum).
+      </p>
+      <div className="form-row">
+        <label>
+          Hours
+          <select value={hours} onChange={(event) => changeHours(event.target.value)}>
+            <option value="">Hours</option>
+            {Array.from({ length: 9 }, (_, h) => (
+              <option key={h} value={String(h)}>{h} {h === 1 ? 'hour' : 'hours'}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Minutes
+          <select value={minutes} onChange={(event) => setMinutes(event.target.value)}>
+            <option value="">Minutes</option>
+            {Array.from({ length: hours === '8' ? 1 : 60 }, (_, m) => (
+              <option key={m} value={String(m)}>{String(m).padStart(2, '0')} min</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {hoursValid && (
+        <p className="helper-text" style={{ textAlign: 'left' }}>
+          {Math.floor(workedTotal! / 60)}h {workedTotal! % 60}m · {startedLabel} to about {endsAt}
+        </p>
+      )}
+      {hours !== '' && minutes !== '' && !hoursValid && (
+        <p className="red-text">Enter at least 1 minute, up to 8 hours.</p>
+      )}
+      {claimsMoreThanElapsed && (
+        <div className="alert-callout">
+          <AlertTriangle />
+          <div>
+            <p>
+              You entered {Math.floor(workedTotal! / 60)}h {workedTotal! % 60}m, but only {Math.floor(elapsedMin / 60)}h {elapsedMin % 60}m have passed since the shift was started in the app. You can still submit — your supervisor will see this.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="checklist-card" style={{ marginTop: 20 }}>
         {checklist.map((item) => (
           <div key={item.label}>
@@ -1139,7 +1201,7 @@ function EndShiftModal({
 
       <label className="checkbox-row">
         <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
-        I confirm this note is accurate.
+        I confirm this note and my hours are accurate.
       </label>
       <label className="field-label">
         Type your name to sign
@@ -1148,7 +1210,16 @@ function EndShiftModal({
       <button
         className="primary-button wide"
         disabled={!allMet}
-        onClick={() => onSubmit({ summary: summary.trim(), observations: observations.trim(), recommendations: recommendations.trim(), followUp, signature: signature.trim() })}
+        onClick={() =>
+          onSubmit({
+            summary: summary.trim(),
+            observations: observations.trim(),
+            recommendations: recommendations.trim(),
+            followUp,
+            signature: signature.trim(),
+            workedMinutes: workedTotal!,
+          })
+        }
       >
       {shift.reviewComment ? 'Resubmit shift' : isResubmit ? 'Resubmit shift' : 'Sign & submit shift'}
       </button>

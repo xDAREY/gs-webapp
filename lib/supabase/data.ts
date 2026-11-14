@@ -55,6 +55,7 @@ function dbShiftToShift(row: any): Shift {
     status: row.status,
     startedAt: row.started_at,
     endedAt: row.ended_at ?? undefined,
+    workedMinutes: row.worked_minutes ?? undefined,
     submittedAt: row.submitted_at ?? undefined,
     entries: (row.entries ?? [])
       .map(dbEntryToEntry)
@@ -153,7 +154,7 @@ export async function fetchShifts(nurseId?: string): Promise<Shift[]> {
   let query = supabase
     .from('shifts')
     .select(
-      `id, nurse_id, status, incident, started_at, ended_at, submitted_at, summary, observations,
+      `id, nurse_id, status, incident, started_at, ended_at, worked_minutes, submitted_at, summary, observations,
        recommendations, follow_up, signature, review_comment, reviewed_at,
        nurses ( name ),
        supervisors ( name ),
@@ -367,7 +368,7 @@ export async function addEntry(shiftId: string, entry: EntryInput) {
 
 export async function submitShift(
   shiftId: string,
-  payload: { summary: string; observations: string; recommendations: string; followUp: boolean; signature: string }
+  payload: { summary: string; observations: string; recommendations: string; followUp: boolean; signature: string; workedMinutes: number }
 ) {
   const supabase = createClient()
   const now = new Date().toISOString()
@@ -382,6 +383,8 @@ export async function submitShift(
       recommendations: payload.recommendations,
       follow_up: payload.followUp,
       signature: payload.signature,
+      // Reported by the nurse; the database sets ended_at = started_at + this.
+      worked_minutes: payload.workedMinutes,
       review_comment: null,
       reviewed_at: null,
       reviewed_by: null,

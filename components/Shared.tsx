@@ -11,6 +11,7 @@ import {
   Stethoscope,
   UsersRound,
   History,
+  Timer,
   HeartHandshake,
 } from 'lucide-react'
 import type { StaffRole } from '@/lib/types'
@@ -176,8 +177,8 @@ export function SupervisorBottomNav({
   onNavigate,
   onLogout,
 }: {
-  tab: 'queue' | 'activity' | 'team' | 'patients'
-  onNavigate: (tab: 'queue' | 'activity' | 'team' | 'patients') => void
+  tab: 'queue' | 'hours' | 'activity' | 'team' | 'patients'
+  onNavigate: (tab: 'queue' | 'hours' | 'activity' | 'team' | 'patients') => void
   onLogout: () => void
 }) {
   return (
@@ -185,6 +186,10 @@ export function SupervisorBottomNav({
       <button className={tab === 'queue' ? 'active' : ''} onClick={() => onNavigate('queue')}>
         <Home />
         Queue
+      </button>
+      <button className={tab === 'hours' ? 'active' : ''} onClick={() => onNavigate('hours')}>
+        <Timer />
+        Hours
       </button>
       <button className={tab === 'activity' ? 'active' : ''} onClick={() => onNavigate('activity')}>
         <Clock3 />
