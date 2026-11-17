@@ -143,7 +143,8 @@ export function NurseApp({
       setTab('history')
     } catch (err) {
       console.error(err)
-      setError('Could not submit the shift — check your connection and try again.')
+      const reason = (err as { message?: string })?.message
+      setError(`Could not submit the shift${reason ? `: ${reason}` : ' — check your connection and try again.'}`)
     }
   }
 
@@ -1099,6 +1100,7 @@ function EndShiftModal({
 
   function changeHours(value: string) {
     setHours(value)
+    if (value !== '' && minutes === '') setMinutes('0') // "7 hours" shouldn't need a second tap on 00 min
     if (value === '8' && minutes !== '' && minutes !== '0') setMinutes('0') // 8h is the maximum
   }
 
@@ -1223,6 +1225,16 @@ function EndShiftModal({
       >
       {shift.reviewComment ? 'Resubmit shift' : isResubmit ? 'Resubmit shift' : 'Sign & submit shift'}
       </button>
+      {!allMet && (
+        <p className="helper-text" style={{ textAlign: 'left' }}>
+          Still needed:{' '}
+          {[
+            ...checklist.filter((item) => !item.met).map((item) => item.label.toLowerCase()),
+            ...(confirmed ? [] : ['the accuracy confirmation']),
+            ...(signature.trim().toLowerCase() === nurse.name.toLowerCase() ? [] : [`your full name typed exactly as “${nurse.name}”`]),
+          ].join(', ')}
+        </p>
+      )}
     </Modal>
   )
 }
